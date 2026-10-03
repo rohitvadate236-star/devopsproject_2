@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: autodrive-db
+  namespace: automobile-shop
+spec:
+  selector:
+    app: autodrive-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: autodrive-db-data
+  namespace: automobile-shop
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autodrive-db
+  namespace: automobile-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autodrive-db
+  template:
+    metadata:
+      labels:
+        app: autodrive-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: autodrive
+            - name: POSTGRES_USER
+              value: autodrive
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: autodrive-db-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: database-data
+              mountPath: /var/lib/postgresql/data
+            - name: database-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U autodrive -d autodrive"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U autodrive -d autodrive"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: database-data
+          persistentVolumeClaim:
+            claimName: autodrive-db-data
+        - name: database-init
+          configMap:
+            name: autodrive-db-init
